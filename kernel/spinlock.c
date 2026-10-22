@@ -191,13 +191,14 @@ rwspinlock_test_step(uint step, const char *msg)
   static uint barrier;
   const uint ncpu = 4;
 
-  __atomic_fetch_add(&barrier, 1, __ATOMIC_ACQ_REL);
-  while (__atomic_load_n(&barrier, __ATOMIC_RELAXED) < ncpu * step) {
-    // spin
-  }
-
   if (cpuid() == 0) {
     printf("rwspinlock_test: step %d: %s\n", step, msg);
+  }
+
+  // Finish logging before CPU 0 can let the other CPUs leave this barrier.
+  __atomic_fetch_add(&barrier, 1, __ATOMIC_ACQ_REL);
+  while (__atomic_load_n(&barrier, __ATOMIC_ACQUIRE) < ncpu * step) {
+    // spin
   }
 }
 
@@ -209,6 +210,19 @@ delay()
     __atomic_fetch_add(&v, 1, __ATOMIC_RELAXED);
   }
   return __atomic_load_n(&v, __ATOMIC_RELAXED);
+}
+
+static void
+long_delay(void)
+{
+  // QEMU virt's time counter runs at 10 MHz (also assumed in clockintr()).
+  // Wait about two seconds without relying on interrupts: this test has
+  // interrupts disabled. This gives writers time to register, but is not
+  // a synchronization guarantee under arbitrary host scheduling delays.
+  uint64 start = r_time();
+  while (r_time() - start < 20000000ULL) {
+    // spin
+  }
 }
 
 uint64
@@ -255,7 +269,8 @@ sys_rwlktest()
   }
 
   if (id == 1) {
-    delay();
+    // Give the writer time to register before releasing the old read locks.
+    long_delay();
     for (int i = 0; i < 10; i++) {
       read_release(&l);
     }
@@ -270,7 +285,8 @@ sys_rwlktest()
   }
 
   if (id == 2) {
-    delay();
+    // Give the writer time to register before a new reader tries to enter.
+    long_delay();
     read_acquire(&l);
     uint f = __atomic_load_n(&flag, __ATOMIC_RELAXED);
     if (f == 0) {
@@ -373,7 +389,8 @@ sys_rwlktest()
     }
 
     if (id == 2) {
-      delay();
+      // Give both writers time to register before admitting a new reader.
+      long_delay();
       read_acquire(&l);
       if (writer_count == 0) {
         printf("rwspinlock_test: reader sneaked ahead of both waiting writers\n");
@@ -386,7 +403,8 @@ sys_rwlktest()
     }
 
     if (id == 3) {
-      delay();
+      // Keep the old read locks until the writers have had time to register.
+      long_delay();
       read_release(&l);
       delay();
       read_release(&l);
