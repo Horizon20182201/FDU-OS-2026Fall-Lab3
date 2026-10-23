@@ -124,29 +124,51 @@ release(struct spinlock *lk)
 static void
 read_acquire_inner(struct rwspinlock *rwlk)
 {
-  // Replace this with your implementation.
-  acquire(&rwlk->l);
+  for (;;) {
+    uint64 state = __atomic_load_n(&rwlk->state, __ATOMIC_SEQ_CST);
+    uint64 waiting_writer_count = (state >> 32) & ((1ULL << 31) - 1);
+    uint64 active_writer = (state & (1ULL << 63)) >> 63;
+    if(active_writer || waiting_writer_count)
+      continue;
+    if(__atomic_compare_exchange_n(&rwlk->state, &state, state + 1, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+      return;
+  }
 }
 
 static void
 read_release_inner(struct rwspinlock *rwlk)
 {
-  // Replace this with your implementation.
-  release(&rwlk->l);
+  uint64 state = __atomic_fetch_sub(&rwlk->state, 1, __ATOMIC_SEQ_CST);
+  uint64 reader_count = state & ((1ULL << 32) - 1);
+  uint64 active_writer = (state & (1ULL << 63)) >> 63;
+  if(reader_count == 0 || active_writer)
+    panic("read release");
 }
 
 static void
 write_acquire_inner(struct rwspinlock *rwlk)
 {
-  // Replace this with your implementation.
-  acquire(&rwlk->l);
+  __atomic_fetch_add(&rwlk->state, 1ULL << 32, __ATOMIC_SEQ_CST);
+  for (;;) {
+    uint64 state = __atomic_load_n(&rwlk->state, __ATOMIC_SEQ_CST);
+    uint64 reader_count = state & ((1ULL << 32) - 1);
+    uint64 active_writer = (state & (1ULL << 63)) >> 63;
+    if(reader_count || active_writer)
+      continue;
+    uint64 next = (state - (1ULL << 32)) | (1ULL << 63);
+    if(__atomic_compare_exchange_n(&rwlk->state, &state, next, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+      return;
+  }
 }
 
 static void
 write_release_inner(struct rwspinlock *rwlk)
 {
-  // Replace this with your implementation.
-  release(&rwlk->l);
+  uint64 state = __atomic_fetch_and(&rwlk->state, ~(1ULL << 63), __ATOMIC_SEQ_CST);
+  uint64 reader_count = state & ((1ULL << 32) - 1);
+  uint64 active_writer = (state & (1ULL << 63)) >> 63;
+  if(reader_count || !active_writer)
+    panic("write release");
 }
 
 void
@@ -180,8 +202,7 @@ write_release(struct rwspinlock *rwlk)
 void
 initrwlock(struct rwspinlock *rwlk)
 {
-  // Replace this with your implementation.
-  initlock(&rwlk->l, "rwlk");
+  __atomic_store_n(&rwlk->state, 0, __ATOMIC_SEQ_CST);
 }
 
 // Test rwspinlock implementation.
