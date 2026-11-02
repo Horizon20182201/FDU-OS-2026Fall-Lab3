@@ -518,8 +518,8 @@ int
 statslock(char *buf, int sz) {
   int n;
   int tot = 0;
-  int nts[2] = {0}, acq[2] = {0}; // kmem, bcache
-  static int prev_nts[2], prev_acq[2]; // protected by lock_locks
+  int nts[2] = {0}, acq[2] = {0};
+  static int prev_nts[2], prev_acq[2];
   char *names[] = {"kmem", "bcache"};
 
   acquire(&lock_locks);
@@ -557,7 +557,7 @@ statslock(char *buf, int sz) {
     last = locks[top]->nts;
   }
   n += snprintf(buf+n, sz-n, "tot= %d\n", tot);
-  // Keep tot= first for the existing tests; report changes since the last read.
+  
   for(int i = 0; i < 2; i++) {
     n += snprintf(buf+n, sz-n,
                   "%s: #test-and-set %d #acquire() %d delta_tas %d delta_acquire %d\n",
