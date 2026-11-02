@@ -62,3 +62,26 @@ make grade
 ## 教师说明
 
 这份仓库只包含公开起始代码和公开测试，不包含三道作业的参考解答。课堂例题是完整代码，可直接讲解。
+
+
+## 追加练习：有界任务队列与批次调度
+
+在原仓库中追加两道 pthread 同步题，题目和完成标准见 [LAB-sync.md](LAB-sync.md)。
+
+- 有界任务队列：修改 `notxv6/queue.c` 的 `queue_put()`、`queue_get()`。
+- 批次调度：修改 `notxv6/batch.c` 的 `data_task()`、`config_task()`。
+
+与 Barrier 一样，两题运行在宿主 Linux / WSL 中，不在 xv6 shell 中运行。起始代码不包含答案。
+
+在本仓库根目录运行：
+
+```sh
+make queue_test batch_test  # 只编译追加两题
+make grade-queue           # 有界队列，50 分
+make grade-batch           # 批次调度，50 分
+make grade-sync            # 追加两题，100 分
+```
+
+也支持 `make grade LAB=sync`。原来的 `make grade` 仍按 `conf/lab.mk` 中的 `LAB=lock` 评测原三题，原有 100 分不变。追加两题单独计 100 分，不与原题分数自动相加。
+
+`make grade-sync` 无须 RISC-V 工具链或 QEMU，不会清理 xv6 的内核或磁盘镜像。重复评测可执行 `make grade-sync SYNC_GRADEFLAGS='--repeat 5 --seed 42'`。
