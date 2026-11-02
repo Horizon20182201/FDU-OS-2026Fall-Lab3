@@ -33,14 +33,17 @@ main(int argc, char *argv[])
   exit(0);
 }
 
-int ntas(int print)
+int ntas(int print, struct lockstats *snapshot)
 {
   int n;
   char *c;
 
-  if (statistics(buf, SZ) <= 0) {
+  memset(buf, 0, SZ);
+  if (statistics(buf, SZ - 1) <= 0) {
     fprintf(2, "ntas: no stats\n");
+    exit(1);
   }
+  lockstats_parse(buf, snapshot);
   c = strchr(buf, '=');
   n = atoi(c+2);
   if(print)
@@ -53,9 +56,10 @@ void test1(void)
 {
   void *a, *a1;
   int n, m;
+  struct lockstats before, after;
 
   printf("start test1\n");  
-  m = ntas(0);
+  m = ntas(0, &before);
   for(int i = 0; i < NCHILD; i++){
     int pid = fork();
     if(pid < 0){
@@ -84,7 +88,8 @@ void test1(void)
     }
   }
   printf("test1 results:\n");
-  n = ntas(1);
+  n = ntas(1, &after);
+  lockstats_diff("test1", &before, &after);
   if(n-m < 10) 
     printf("test1 OK\n");
   else
@@ -195,8 +200,9 @@ void test4(void)
 {
   uint64 a, a1;
   int n, m;
+  struct lockstats before, after;
 
-  m = ntas(0);
+  m = ntas(0, &before);
   printf("start test4\n");
   int pid;
 
@@ -262,7 +268,8 @@ void test4(void)
   kill(pid);
   wait(&status);
 
-  n = ntas(1);
+  n = ntas(1, &after);
+  lockstats_diff("test4", &before, &after);
   if(n-m < (NCHILD4-1)*10000)
     printf("\ntest4 OK\n");
   else
