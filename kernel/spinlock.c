@@ -518,15 +518,25 @@ int
 statslock(char *buf, int sz) {
   int n;
   int tot = 0;
+  int nts[2] = {0}, acq[2] = {0}; // kmem, bcache
+  static int prev_nts[2], prev_acq[2]; // protected by lock_locks
+  char *names[] = {"kmem", "bcache"};
 
   acquire(&lock_locks);
   n = snprintf(buf, sz, "--- lock kmem/bcache stats\n");
   for(int i = 0; i < NLOCK; i++) {
     if(locks[i] == 0)
       break;
-    if(strncmp(locks[i]->name, "kmem", strlen("kmem")) == 0 ||
-       strncmp(locks[i]->name, "bcache", strlen("bcache")) == 0) {
-      tot += locks[i]->nts;
+    int group = -1;
+    if(strncmp(locks[i]->name, "kmem", strlen("kmem")) == 0)
+      group = 0;
+    else if(strncmp(locks[i]->name, "bcache", strlen("bcache")) == 0)
+      group = 1;
+    if(group >= 0) {
+      int count = atomic_read4(&locks[i]->nts);
+      nts[group] += count;
+      acq[group] += atomic_read4(&locks[i]->n);
+      tot += count;
       n += snprint_lock(buf +n, sz-n, locks[i]);
     }
   }
@@ -547,6 +557,15 @@ statslock(char *buf, int sz) {
     last = locks[top]->nts;
   }
   n += snprintf(buf+n, sz-n, "tot= %d\n", tot);
+  // Keep tot= first for the existing tests; report changes since the last read.
+  for(int i = 0; i < 2; i++) {
+    n += snprintf(buf+n, sz-n,
+                  "%s: #test-and-set %d #acquire() %d delta_tas %d delta_acquire %d\n",
+                  names[i], nts[i], acq[i],
+                  nts[i] - prev_nts[i], acq[i] - prev_acq[i]);
+    prev_nts[i] = nts[i];
+    prev_acq[i] = acq[i];
+  }
   release(&lock_locks);  
   return n;
 }

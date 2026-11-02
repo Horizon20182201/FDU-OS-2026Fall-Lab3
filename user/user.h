@@ -62,12 +62,6 @@ char* sbrk(int);
 char* sbrklazy(int);
 #ifdef LAB_LOCK
 int statistics(void*, int);
-struct lockstats {
-  uint nts[2]; // kmem, bcache
-  uint acquire[2];
-};
-void lockstats_parse(const char*, struct lockstats*);
-void lockstats_diff(const char*, const struct lockstats*, const struct lockstats*);
 #endif
 
 // printf.c

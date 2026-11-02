@@ -69,17 +69,14 @@ readfile(char *file, int nbytes, int inc)
   close(fd);
 }
 
-int ntas(int print, struct lockstats *snapshot)
+int ntas(int print)
 {
   int n;
   char *c;
 
-  memset(buf, 0, SZ);
-  if (statistics(buf, SZ - 1) <= 0) {
+  if (statistics(buf, SZ) <= 0) {
     fprintf(2, "ntas: no stats\n");
-    exit(1);
   }
-  lockstats_parse(buf, snapshot);
   c = strchr(buf, '=');
   n = atoi(c+2);
   if(print)
@@ -95,7 +92,6 @@ test0()
   char dir[2];
   enum { N = 10, NCHILD = 3 };
   int m, n;
-  struct lockstats before, after;
 
   dir[0] = '0';
   dir[1] = '\0';
@@ -117,7 +113,7 @@ test0()
       exit(1);
     }
   }
-  m = ntas(0, &before);
+  m = ntas(0);
   for(int i = 0; i < NCHILD; i++){
     dir[0] = '0' + i;
     int pid = fork();
@@ -147,8 +143,7 @@ test0()
   }
   
   printf("test0 results:\n");
-  n = ntas(1, &after);
-  lockstats_diff("test0", &before, &after);
+  n = ntas(1);
   if (n-m < 500)
     printf("test0: OK\n");
   else
