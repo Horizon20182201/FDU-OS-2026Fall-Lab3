@@ -5,6 +5,19 @@
 
 -include conf/lab.mk
 
+# Host pthread exercises use their own compiler and do not need RISC-V/QEMU.
+SYNC_HOST_GOALS := queue_test batch_test grade-sync grade-queue grade-batch clean-sync
+ifneq ($(strip $(MAKECMDGOALS)),)
+ifeq ($(strip $(filter-out $(SYNC_HOST_GOALS),$(MAKECMDGOALS))),)
+SYNC_HOST_ONLY := 1
+endif
+endif
+ifeq ($(LAB),sync)
+ifeq ($(strip $(MAKECMDGOALS)),grade)
+SYNC_HOST_ONLY := 1
+endif
+endif
+
 K=kernel
 U=user
 
@@ -64,6 +77,7 @@ endif
 # perhaps in /opt/riscv/bin
 #TOOLPREFIX = 
 
+ifndef SYNC_HOST_ONLY
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
 TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
@@ -78,6 +92,7 @@ TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' 
 	echo "*** Error: Couldn't find a riscv64 version of GCC/binutils." 1>&2; \
 	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
 	echo "***" 1>&2; exit 1; fi)
+endif
 endif
 
 QEMU = qemu-system-riscv64
@@ -119,12 +134,14 @@ CFLAGS += -DKCSAN
 KCSANFLAG = -fsanitize=thread -fno-inline
 endif
 
+ifndef SYNC_HOST_ONLY
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
 CFLAGS += -fno-pie -no-pie
 endif
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
+endif
 endif
 
 LDFLAGS = -z max-page-size=4096
@@ -302,7 +319,7 @@ clean:
 	$K/kernel fs.img \
 	mkfs/mkfs .gdbinit \
         $U/usys.S \
-	$(UPROGS)
+	$(UPROGS) queue_test batch_test
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
@@ -365,11 +382,15 @@ endif
 print-gdbport:
 	@echo $(GDBPORT)
 
+ifeq ($(LAB),sync)
+grade: grade-sync
+else
 grade:
 	@echo $(MAKE) clean
 	@$(MAKE) clean || \
           (echo "'make clean' failed.  HINT: Do you have another running instance of xv6?" && exit 1)
 	python3 ./grade-lab-$(LAB) $(GRADEFLAGS)
+endif
 
 ##
 ## FOR submissions
@@ -402,9 +423,14 @@ zipball: clean submit-check
 
 .PHONY: zipball clean grade submit-check check-qemu-version
 
+ifndef SYNC_HOST_ONLY
 QEMU_VERSION := $(shell $(QEMU) --version | head -n 1 | sed -E 's/^QEMU emulator version ([0-9]+\.[0-9]+)\..*/\1/')
+endif
 check-qemu-version:
 	@if [ "$(shell echo "$(QEMU_VERSION) >= $(MIN_QEMU_VERSION)" | bc)" -eq 0 ]; then \
 		echo "ERROR: Need qemu version >= $(MIN_QEMU_VERSION)"; \
 		exit 1; \
 	fi
+
+# Additional host-side synchronization exercises.
+include conf/sync.mk

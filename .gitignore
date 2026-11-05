@@ -27,3 +27,10 @@ barrier
 *.pcap
 TAGS
 /fs.img.bk
+
+# Host-side synchronization tests
+/queue_test
+/batch_test
+__pycache__/
+core
+core.*

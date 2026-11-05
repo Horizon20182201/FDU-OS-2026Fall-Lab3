@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Public pthread lab grader. No third-party Python packages required."""
+import argparse
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parent
+# (case, points, timeout seconds)
+CASES = {
+    "queue": [
+        ("fifo", 5, 5), ("empty", 5, 5), ("full", 5, 5),
+        ("wake-empty", 5, 5), ("wake-full", 5, 5),
+        ("spsc", 5, 10), ("mpmc", 8, 15),
+        ("capacity1", 8, 20), ("unbalanced", 4, 15),
+    ],
+    "batch": [
+        ("data-first", 7, 5), ("config-first", 7, 5),
+        ("incomplete", 6, 5), ("mixed", 10, 15),
+        ("slow-batch", 10, 10), ("stress", 10, 20),
+    ],
+}
+
+
+def run(command, timeout):
+    try:
+        proc = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                encoding="utf-8", errors="replace",
+                                start_new_session=True)
+    except OSError as exc:
+        return 127, f"RUN ERROR: cannot execute {command[0]}: {exc}\n"
+    try:
+        output, _ = proc.communicate(timeout=timeout)
+        return proc.returncode, output
+    except subprocess.TimeoutExpired:
+        # Kill the whole process group, including any descendants.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        output, _ = proc.communicate()
+        return 124, output + "\nTIMEOUT: possible deadlock, lost wakeup, or slow execution\n"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("lab", nargs="?", choices=["all", "queue", "batch"], default="all")
+    parser.add_argument("--repeat", type=int, default=1, help="repeat every case; every run must pass")
+    parser.add_argument("--seed", type=int, default=2026, help="base seed for batch arrival order")
+    args = parser.parse_args()
+    if os.name != "posix":
+        parser.error("run in Linux / WSL, not Windows Python")
+    if args.repeat < 1:
+        parser.error("--repeat must be positive")
+    labs = list(CASES) if args.lab == "all" else [args.lab]
+    earned = total = 0
+    all_ok = True
+    for lab in labs:
+        maximum = sum(points for _, points, _ in CASES[lab])
+        total += maximum
+        # Rebuild even if an old executable is newer than the submitted source.
+        rc, output = run(["make", "-B", f"{lab}_test"], 30)
+        if rc:
+            print(f"FAIL {lab}: build failed\n{output}")
+            all_ok = False
+            continue
+        for case, points, timeout in CASES[lab]:
+            ok = True
+            for rep in range(args.repeat):
+                command = [str(ROOT / f"{lab}_test"), case]
+                if lab == "batch":
+                    command.append(str(args.seed + rep))
+                rc, output = run(command, timeout)
+                if rc != 0 or output.strip() != f"PASS {case}":
+                    print(f"FAIL {lab}/{case} run={rep + 1} exit={rc}\n{output.strip()}")
+                    ok = False
+                    break
+            if ok:
+                earned += points
+                print(f"PASS {lab}/{case}: {points}/{points}")
+            else:
+                all_ok = False
+    print(f"Score: {earned}/{total}")
+    if all_ok:
+        print("ALL TESTS PASSED")
+    return 0 if all_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
