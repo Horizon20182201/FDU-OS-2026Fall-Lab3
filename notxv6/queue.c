@@ -18,12 +18,27 @@ void queue_destroy(struct queue *q)
 void queue_put(struct queue *q, int value)
 {
   /* TODO: implement blocking enqueue. */
-  (void)q;
-  (void)value;
+  pthread_mutex_lock(&q->mutex);  
+  while (q->count == q->capacity) {
+    pthread_cond_wait(&q->not_full, &q->mutex);
+  }
+  q->data[q->tail] = value;
+  q->tail = (q->tail + 1) % q->capacity;
+  q->count++;
+  pthread_cond_signal(&q->not_empty);
+  pthread_mutex_unlock(&q->mutex);
 }
 int queue_get(struct queue *q)
 {
   /* TODO: implement blocking dequeue. This placeholder is not a solution. */
-  (void)q;
-  return -1;
+  pthread_mutex_lock(&q->mutex);
+  while (q->count == 0) {
+    pthread_cond_wait(&q->not_empty, &q->mutex);
+  }
+  int value = q->data[q->head];
+  q->head = (q->head + 1) % q->capacity;
+  q->count--;
+  pthread_cond_signal(&q->not_full);
+  pthread_mutex_unlock(&q->mutex);
+  return value;
 }
